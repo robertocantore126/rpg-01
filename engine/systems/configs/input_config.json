@@ -1,0 +1,15 @@
+{
+  "keys": {
+    "w": "MOVE_UP",
+    "s": "MOVE_DOWN",
+    "a": "MOVE_LEFT",
+    "d": "MOVE_RIGHT",
+    "space": "JUMP",
+    "escape": "PAUSE",
+    "enter": "START"
+  },
+  "mouse": {
+    "1": "SHOOT",
+    "3": "ALT_FIRE"
+  }
+}

@@ -1,0 +1,220 @@
+Fluffy Platformer Engine - Usage & Architecture
+
+This file is intended to be the single entry point to understand how the engine is structured, how initialization works, and where subsystems interact. Read this first when modifying or integrating the engine.
+
+1) High-level overview
+
+- `engine/core/core.py` (GameContext): bootstraps pygame, creates the ServiceContainer and registers default services. Runs the main game loop: get_dt -> get_events -> update -> draw.
+- `engine/systems/`: stateless or stateful game systems (EventBus, InputManager, TimersManager, SaveManager, SceneManager, SoundManager, etc.). These are registered into `GameContext.services` and are accessible by key.
+- `engine/world/`: authoritative game-world data (World, ComponentStore, QuadTree, Pathfinding, Tilemap). World is the authoritative ECS in this engine.
+- `engine/behaviours/`: AI modules (BehaviourTree, FSM, GOAP) and a `Brain` service which coordinates strategies.
+- `engine/ui/`: UI components and UiManager which subscribes to mouse events from EventBus and publishes UI events.
+
+2) Initialization order and rationale
+
+GameContext runs initialization in `_register_default_services()` and then `_post_service_wiring()`.
+Default order (summary):
+
+- EventBus
+- SceneManager
+- StateManager
+- InputManager
+- TimersManager
+- SaveManager (depends on TimersManager for autosave timer)
+- SoundManager
+- World and related managers (Camera, Viewport, ChunkManager, TilemapManager, EntityManager)
+- UI (depends on Viewport to be set up for screen conversions)
+
+Why order matters:
+
+- TimersManager must exist before SaveManager because SaveManager schedules an autosave timer at construction.
+- Viewport/Camera should be available before UI manager because UI expects to receive positions already translated to game-canvas coordinates and a display mode may be set during viewport initialization.
+- World should be available before any system that queries entities/components (collision manager, particle manager), otherwise such systems must handle missing-world gracefully.
+
+How wiring is performed now:
+
+- Services are created via factory lambdas in `GameContext._register_default_services()` and registered in `self.services`.
+- After registration, `_post_service_wiring()` runs and performs optional wiring such as making `EntityManager` delegate to `World` when both are present.
+- A `SingletonRegistry` utility is used to optionally enforce single-instance semantics for key global objects.
+
+3) Event-driven flow
+
+- `InputManager` polls `pygame.event.get()` and `EventBus.publish`es input events (KEY_DOWN, MOUSE_MOVE, etc.).
+- `UiManager` subscribes to `EventType.MOUSE_*` and routes events to UI components. UI components may publish UI events back to `EventBus` (e.g., UI_BUTTON_CLICKED).
+- `EventBus.dispatch()` is called by `GameContext.update()` and processes the queued events, calling subscribers for the specific event type and for `EventType.ALL_EVENTS`.
+
+4) Collision integration with World (detailed)
+
+Goal: collision detection and resolution should rely on `World` as the authoritative data store. Key points:
+
+- `World` contains the `components` mapping and a `quadtree` spatial index. Entity components include at least `position` (dict with x,y) and `collider` (dict with w,h).
+- `World.rebuild_quadtree()` initially builds a full spatial index by inserting all entities that have `position` and `collider` components. This is used by `CollisionManager` for efficient queries.
+- Incremental updates: The engine now supports `World.add_to_quadtree(eid)`, `World.remove_from_quadtree(eid)` and `World.update_in_quadtree(eid)` for per-entity updates. These should be used by systems that move entities to avoid full rebuilds every frame.
+
+Recommended collision flow (how CollisionManager should integrate):
+
+- On entity creation: register components in `World` (position, collider). Call `world.add_to_quadtree(eid)` to index.
+- On entity movement each frame: after position is updated, call `world.update_in_quadtree(eid)` to update the spatial index.
+- On entity destroy: call `world.remove_from_quadtree(eid)` and remove components via `world.remove_entity(eid)`.
+- For collision checks: use `world.query_area(rect)` which returns candidate entity ids; then fetch components via `world.get_component(eid, "position")` and `world.get_component(eid, "collider")` to compute precise collisions and responses.
+
+Notes on responsibility:
+
+- CollisionManager should not maintain its own copy of entity positions; it should always query `World` to avoid duplication and inconsistencies.
+- For performance-critical games, consider marking components as 'dirty' and batch updating quadtree at the end of each frame, or limit updates to entities whose area crosses quadtree cell boundaries.
+
+5) Concurrency and singletons
+
+- A `SingletonRegistry` class centralizes optional enforcement of single-instance objects. For testing or multi-context scenarios, enforcement can be disabled with environment variable `ENGINE_ALLOW_MULTIPLE_SINGLETONS=1` or via `SingletonRegistry.set_enforce(False)`.
+
+6) Save/Load
+
+- `SaveManager` exposes `register(key, saveable)` for objects implementing `save_state()` and `load_state(data)` and `register_value(key, primitive)` for primitives. It schedules autosave via TimersManager.
+
+7) Behaviour systems
+
+- `Brain` manages enemy strategies and accepts FSM, BT or GOAP strategies. For BT strategies, you must provide either a config dict (passable to `BehaviourTree.from_config`) or a prebuilt Node/callable.
+
+8) UI notes
+
+- `UiManager` receives mouse events already in game-coordinates and routes to components. `Label` now caches rendered text surfaces to avoid redundant rendering cost.
+
+9) How to extend
+
+- To add a new system: write the module in `engine/systems/`, expose a factory in `GameContext._register_default_services()` and handle wiring in `_post_service_wiring()` if it depends on other services.
+
+10) Troubleshooting
+
+- If timers don't fire: ensure `TimersManager` is registered and its `update()` is called from `GameContext.update()`.
+- If saves are not written: verify `SaveManager` filepath is writable and that `SaveManager.register()` was used to register saveables.
+- If audio fails: `SoundManager` will continue without audio if mixer initialization fails; look for `[SoundManager]` warnings.
+
+This file is intentionally prescriptive: when changing service factories, update this doc to reflect the new expected order and wiring.
+0. Use the provided assets folder structure to avoid having to specify new paths in the functions that load them
+
+# Behaviours
+1. Create a Brain instance, register an enemy into it and add it's strategy
+2. remember to call the update method
+3. When defining it's strategy you have to define strategy-specific attributes
+
+FSM: has a from_config method
+BT: has a from_config method
+GOAP: add possible actions and then start_plan
+
+# Core
+1. ideally you should only interact with this module, everything else is accesible from here
+2. has EventBus, DebugConsole, State and Scene managers as class members
+3. has a ServiceContainer on which you can call .get("servicename) to get any other functionality
+
+# Systems
+Achievements: use the AchievementManager to add a new achievement and then register it into the manager to have it being checked
+Note: achievemnt progress should be saved in the save file and loaded on startup to keep working towards goals across runs
+
+Collisions: register into the CollisionManager objects with a rect attribute and call it's update method,
+then listen for Collision events from the EventBus, those events will have the collisionSide in the data field
+
+Cutscenes: start the manager and remember to update it. to make a cutscene make a SequenceAction object describing it and then
+start it from the cutsceneManager
+
+DebugConsole: remember to enable it in the core module when wanting to use it. it is auto-updated. to register new function to profile
+use it's decorator in the init of the class containing them. to add data to log use the .log() method
+
+EventBus: just subscribe to the events you want to listen for, and unsubscribe when done. Remember to add callbacks. 
+use .publish ot put new events in the queue of events to be dispatched
+
+Inputs: get it's config file to pair key-presses to actions. when a binded key is pressed the KEY_DOWN event will be dispatched
+with relevant data in the data field. Listen for those events to react to inputs. 
+
+Multiplayer: get it's instance from the ServiceContainer and set it's mode to server or client. Inputs will then automatically
+modify and update the World for the current instance and be broadcasted to worlds of connected clients. To send specific data
+modify the self.state_callback field with a Callable that handles the desired data
+
+Save: saves registered data every minute. add to it via .register() to save the state of new data every minute. 
+call .save() to save at an arbitrary time
+
+Scenes: .create() new scenes and .register() them. then move between them with the provided methods that take care of automatically
+calling the on_enter, on_exit, and other Scene methods. Scenes should be derived from the State class (currently living in the core.py)
+
+Sounds: after getting it's instance use load_sounds() or load_music() only once. then call .play_sound() when you need to play it
+
+States: holds the state of the game. Some predefined states are defined in the GameState enum. it also has some predefined transitions 
+between the standard states. add new states redefininf the GameState enum and use it's methods to update the (single) state of the game.
+class fields for prev_state and next_state are available if needed
+
+Timer: get the TimersManager's instance and use it's methods to create, remove and start new timers. When elapsed the timers will
+publish a specified event in the EventBus, listen for it where needed. 
+
+# UI
+1. ideally you only have to interact with the UI manager for everything
+2. buttons, text, and other ui elements as well as their updates and clicks shold be handled through it
+3. realistically the "good" text system is in fonts.py, you may want to use that if you only want to display text
+
+# World
+
+Camera: the Viewport holds the actual screen, takes care of the scaling from game_canvas to window size. 
+to use the Camera get it's instance and then .update() it for the target rect, it will follow it according to the specified 
+attributes. you can set the attributes manually or through provided methods
+
+Chunks: get the ChunkManager instance and use it's .update() method to keep in memory on visible chunks instead of the whole map
+
+Constants: hold all game constants. can become messy. 
+
+Entity: get the EntityManager and use .create() to create a new Entity. an Entity has a unique id and rect, and a dictionary to hold
+Components. Use the provided methods to handle the components related to any entity. 
+
+Navigation: agent pathfinding on a grid using A*. also implements some SteeringBehaviour. get the AgentContoller instance and
+use it's methods to define the pathfinding. then .update()
+
+Particles: interact with the ParticleManager to create new ParticleEmitters and call it's update method. You can define custom
+ParticleEmitters with A LOT of parameters. then call their .burst() method when desired to actually create the Particles
+
+Proc-gen: usage heavly depends on generation type. generally just provide the required parameters and call .solve() or update() to 
+generate the needed maps. 
+
+Shadow: interact with the ShadowCaster to compute and render light rays form a specified source. Need access to surroundings
+to compute the obstacles.
+
+Sprites: use the SpriteManager methods to load all sprites in a single place, then use the .get() method to retireve them
+where needed. this avoids multiple loadings and file handle dispersion. 
+
+Tilemap: automatically loads all tilemaps and tilesets in the defined folders. use .get_tilemap() to retrieve them. 
+then call .render() on the single tilemap to render it. tilemaps also have some utility methods for them. 
+
+World: entities stored by the world have their own id assigned by it. use the .add_component() to add components to any 
+entity in the world. you can query entities with give components. you can query an area and get a list of the ids of the 
+entities in that area. there are also a few pathfinding utilities, but using Navigation is advised. 
+spatial partitioning is done with a quadtree, use rebuild_quadtree method from the World to populate it when adding or
+moving entities. (should be fast enough... but don't abuse it)
+the build-in pathfinding works for both grids and graphs, falling back to A* or Dijkstra
+
+The ComponentStore should probably be into its own file. It should hold all the components that YOU create. 
+it then provides methods to get them and the entities using them. 
+there are no predefined components provided. 
+
+
+
+Multiplayer notes: (pygnet? tcp+nginx proxy + server code 4-8ms)
+1. socket programming
+2. TCP connections
+3. send arbitrary data endcoded in raw bytes back and forth
+4. improve abstraction layers
+5. use struct (library) to pack your own data types and read them with their
+own interpreter
+6. sending messages as json data is convenient but slow (single connection, request-response procedure)
+7. investigate HLA framework (wikipedia page)
+7.1 Shared-Predefined-Object (everybody writes and reads from a single source)
+7.2 needs server-side controls to see which clients see which updates and the ability for the server to block 
+certain updates to prevent cheating
+7.3 reduce packet size by encoding updates as bytes, (create, update, delete are usually the only types needed) 
+8. lean into state-less programming - elements don't own data but derive their state from other elements 
+9. stream the data when it's available instead of waiting for it to be requested
+9.1 for this use two connections on different ports
+10. latency and throughput (the wait and the amount of data passing)
+11. when sending data constantly interpolate between received data to make objects look smooth
+12. define objects and their types - update the value in the network object
+12.1 possibility to set hooks on creation-deletion-update of those objects
+
+13. RPC (remote procedure call) put a decorator on a function to mark it as being a procedure that other 
+programs on the network can call. then when you call it pass the function's id and the arguments you want 
+to call it with across the network so that different programs can call functions over the network on different
+machines

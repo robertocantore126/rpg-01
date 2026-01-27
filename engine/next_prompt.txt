@@ -1,0 +1,6 @@
+
+durante lo sviluppo del gioco l'engine non viene modificato 
+nel Main del gioco viene definita la fsm degli stati del gioco
+l'engine tiene lo state stack degli stati del gioco e si occupa della navigazi oltre a offrire comodi strumenti
+ogni scena del gioco viene programmata indipendentemente dalle altre
+il mondo ecs è un'opzione opt in disponibile solo per quelle scene di simulazione intensiva
