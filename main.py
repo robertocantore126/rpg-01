@@ -1,8 +1,21 @@
 import sys
 import os
 
-# Add dependencies to path logic if needed, but assuming running from root
-sys.path.append(os.getcwd()) 
+# Hide pygame support prompt
+os.environ['PYGAME_HIDE_SUPPORT_PROMPT'] = 'hide'
+
+import warnings
+from pathlib import Path
+
+# Suppress pygame-internal warnings
+warnings.filterwarnings("ignore", category=UserWarning, module="pygame.pkgdata")
+
+# Add dependencies to path logic
+sys.path.append(os.getcwd())
+
+# Auto-generate assets if missing
+from engine.generate_assets_folder import verify_and_generate
+verify_and_generate(Path(__file__).resolve().parent)
 
 from engine.core.core import GameContext
 from src.scenes.world_scene import WorldScene

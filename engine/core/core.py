@@ -124,8 +124,9 @@ class GameContext:
             self.dt,
             self.state_manager.paused())
 
-        self.services.get("world")\
-            .update(self.dt, self.scene_manager.get_current_scene().active_systems)  # type: ignore # World (ECS systems)
+        current_scene = self.scene_manager.get_current_scene()
+        active_systems = getattr(current_scene, "active_systems", None)
+        self.services.get("world").update(self.dt, active_systems)
 
         if self.debugger:
             self.debugger.log("FPS", self.clock.get_fps())
@@ -230,6 +231,7 @@ class Scene(ABC):
     def __init__(self, ctx: GameContext, name: str = ""):
         self.name = name
         self.ctx = ctx
+        self.active_systems = None # List of ECS systems to run
 
     @abstractmethod
     def on_enter(self, payload=None): pass

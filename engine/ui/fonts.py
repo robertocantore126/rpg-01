@@ -21,7 +21,8 @@ class FontManager:
         if os.path.exists(font_path):
             return pygame.font.Font(font_path, size)
         else:
-            raise FileNotFoundError(f"Font {font_name} not found in {self.font_dir}")
+            print(f"[FontManager] Warning: Font {font_name} not found in {self.font_dir}. Falling back to default.")
+            return pygame.font.SysFont("Arial", size)
 
 
     def draw_text(self, surface, text, color, x, y, alpha=255, bold=False) -> pygame.Rect:
@@ -51,7 +52,12 @@ class Font():
     """
     def __init__(self, path) -> None:
         self.spacing = 1 #pixels between characters in the image
-        font_img = pygame.image.load(path).convert()
+        if os.path.exists(path):
+            font_img = pygame.image.load(path).convert()
+        else:
+            print(f"[Font] Warning: Font image {path} not found. Creating dummy.")
+            font_img = pygame.Surface((1, 1))
+            font_img.fill((127, 0, 0)) # Grey bar to avoid crash in loop
         current_char_width = 0
         self.characters = {}
         character_count = 0

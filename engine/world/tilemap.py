@@ -208,6 +208,10 @@ class TilemapManager:
         Carica tutte le tilemap (JSON) dalla cartella assets/tilemaps.
         """
         tilemap_dir = os.path.join("assets", "tilemaps")
+        if not os.path.exists(tilemap_dir):
+            print(f"[TilemapManager] Warning: tilemap directory '{tilemap_dir}' not found.")
+            return
+
         for filename in os.listdir(tilemap_dir):
             if filename.endswith(".json"):
                 name, _ext = os.path.splitext(filename)

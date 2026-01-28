@@ -1,0 +1,22 @@
+{
+    "folders": {
+        "assets/fonts": true,
+        "assets/music": true,
+        "assets/sounds": true,
+        "assets/tilemaps": true,
+        "assets/tilesets": true,
+        "assets/sprites": true,
+        "game/entities": true,
+        "game/scenes": true
+    },
+    "hashes": {
+        "assets/fonts": "da39a3ee5e6b4b0d3255bfef95601890afd80709",
+        "assets/music": "da39a3ee5e6b4b0d3255bfef95601890afd80709",
+        "assets/sounds": "da39a3ee5e6b4b0d3255bfef95601890afd80709",
+        "assets/tilemaps": "da39a3ee5e6b4b0d3255bfef95601890afd80709",
+        "assets/tilesets": "da39a3ee5e6b4b0d3255bfef95601890afd80709",
+        "assets/sprites": "da39a3ee5e6b4b0d3255bfef95601890afd80709",
+        "game/entities": "ccd895474793691f0c8fddf724fb4ecb5d750f1c",
+        "game/scenes": "ccd895474793691f0c8fddf724fb4ecb5d750f1c"
+    }
+}
